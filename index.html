@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Harbour Wind · Hong Kong</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500&family=JetBrains+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+  :root{--fg:#e8ecf5;--dim:rgba(232,236,245,.56);--faint:rgba(232,236,245,.32);--line:rgba(255,255,255,.12);--panel:rgba(8,10,22,.74);--accent:#9be7ff}
+  html,body{margin:0;height:100%;background:#03040a;overflow:hidden;color:var(--fg);font-family:'Space Grotesk',system-ui,sans-serif;-webkit-tap-highlight-color:transparent;-webkit-font-smoothing:antialiased}
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+  #gl{touch-action:none}
+  #overlay{pointer-events:none}
+  .hud{position:fixed;left:0;top:0;padding:calc(env(safe-area-inset-top) + 18px) 20px 0 calc(env(safe-area-inset-left) + 20px);transition:opacity .9s ease;pointer-events:none;max-width:min(560px,86vw)}
+  .hud h1{text-shadow:0 0 18px rgba(0,0,0,.7);font-weight:300;font-size:clamp(24px,4.2vw,38px);letter-spacing:.01em;margin:0;line-height:1.05}
+  .hud .mono{text-shadow:0 0 10px rgba(0,0,0,.9),0 0 3px rgba(0,0,0,.8);font-family:'JetBrains Mono',ui-monospace,monospace;font-size:11px;color:var(--dim);line-height:1.65;letter-spacing:.02em}
+  .hud .when{margin-top:8px}
+  .legend{display:flex;align-items:center;gap:8px;margin-top:10px}
+  .legend .bar{width:120px;height:4px;border-radius:2px}
+  .hint{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom) + 26px);transform:translateX(-50%);font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--faint);letter-spacing:.06em;transition:opacity 1.2s ease;pointer-events:none;white-space:nowrap}
+  #toggle{position:fixed;right:calc(env(safe-area-inset-right) + 16px);bottom:calc(env(safe-area-inset-bottom) + 16px);background:rgba(10,12,24,.55);border:1px solid var(--line);color:var(--fg);font:500 12px 'Space Grotesk',sans-serif;letter-spacing:.08em;text-transform:uppercase;padding:10px 14px;border-radius:999px;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);transition:opacity .9s ease;cursor:pointer}
+  body.clean .hud,body.clean #toggle,body.clean .hint{opacity:0}
+  body.clean #toggle{pointer-events:none}
+  #panel{position:fixed;left:0;right:0;bottom:0;max-height:64vh;overflow:auto;-webkit-overflow-scrolling:touch;background:var(--panel);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-top:1px solid var(--line);padding:16px 20px calc(env(safe-area-inset-bottom) + 22px);transform:translateY(105%);transition:transform .35s cubic-bezier(.2,.8,.2,1);box-sizing:border-box;z-index:5}
+  #panel.open{transform:none}
+  @media (min-width:760px){#panel{left:auto;right:16px;bottom:16px;width:350px;border:1px solid var(--line);border-radius:16px;max-height:calc(100vh - 32px)}}
+  .ph{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+  .ph b{font-weight:500;font-size:13px;letter-spacing:.1em;text-transform:uppercase}
+  .x{background:none;border:0;color:var(--dim);font-size:22px;line-height:1;cursor:pointer;padding:4px 6px}
+  .row{display:grid;grid-template-columns:96px 1fr 40px;align-items:center;gap:10px;margin:12px 0;font-size:13px}
+  .row label{color:var(--dim)}
+  .row output{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);text-align:right}
+  input[type=range]{width:100%;accent-color:var(--accent)}
+  select{background:rgba(255,255,255,.06);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;font:13px 'Space Grotesk',sans-serif}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 4px}
+  .chip{border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--fg);border-radius:999px;padding:6px 10px 6px 6px;font:13px 'Space Grotesk',sans-serif;display:flex;align-items:center;gap:7px;cursor:pointer}
+  .chip i{display:block;width:30px;height:12px;border-radius:6px}
+  .chip.on{border-color:rgba(255,255,255,.55);background:rgba(255,255,255,.1)}
+  .btns{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}
+  .btn{border:1px solid var(--line);background:rgba(255,255,255,.06);color:var(--fg);border-radius:10px;padding:8px 12px;font:13px 'Space Grotesk',sans-serif;cursor:pointer}
+  .btn.on{background:rgba(155,231,255,.18);border-color:rgba(155,231,255,.5)}
+  .sec{border-top:1px solid var(--line);margin-top:16px;padding-top:14px}
+  .sec h3{margin:0 0 6px;font-weight:500;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--dim)}
+  .note{font-size:12px;line-height:1.55;color:var(--dim)}
+  .note a{color:var(--accent)}
+  textarea{width:100%;box-sizing:border-box;min-height:90px;margin-top:8px;background:rgba(0,0,0,.35);color:var(--fg);border:1px solid var(--line);border-radius:10px;padding:10px;font:11px 'JetBrains Mono',monospace}
+  #status{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);margin-top:6px;min-height:14px}
+  #err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;text-align:center;padding:30px;color:var(--dim);font-size:14px;line-height:1.6}
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="overlay"></canvas>
+
+<div class="hud">
+  <h1>Harbour Wind</h1>
+  <div class="mono when" id="when"></div>
+  <div class="mono" id="stats"></div>
+  <div class="legend mono"><span id="lgLo"></span><span class="bar" id="lgBar"></span><span id="lgHi"></span></div>
+</div>
+<div class="hint" id="hint">drag to stir · tap to hide</div>
+<button id="toggle">Controls</button>
+
+<div id="panel" aria-label="Controls">
+  <div class="ph"><b>Controls</b><button class="x" id="close" aria-label="Close">×</button></div>
+  <div class="chips" id="palettes"></div>
+  <div class="row"><label for="count">Particles</label>
+    <select id="count"><option value="60000">60k</option><option value="150000">150k</option><option value="300000">300k</option><option value="600000">600k</option><option value="1000000">1M</option></select><span></span></div>
+  <div class="row"><label for="wind">Wind</label><input id="wind" type="range" min="0.2" max="3" step="0.05"><output></output></div>
+  <div class="row"><label for="turb">Turbulence</label><input id="turb" type="range" min="0" max="3" step="0.05"><output></output></div>
+  <div class="row"><label for="trail">Trails</label><input id="trail" type="range" min="0.85" max="0.99" step="0.005"><output></output></div>
+  <div class="row"><label for="bloom">Glow</label><input id="bloom" type="range" min="0" max="2.5" step="0.05"><output></output></div>
+  <div class="row"><label for="bright">Brightness</label><input id="bright" type="range" min="0.3" max="3" step="0.05"><output></output></div>
+  <div class="btns">
+    <button class="btn" id="bStations">Stations</button>
+    <button class="btn" id="bPause">Pause</button>
+    <button class="btn" id="bReseed">Reseed</button>
+  </div>
+  <div class="sec">
+    <h3>Data</h3>
+    <div class="note" id="source"></div>
+    <div class="btns" style="margin-top:8px"><button class="btn on" id="bLive">Live</button></div>
+    <div class="note" style="margin-top:8px">Live mode reads HKO every 2 min and crossfades to each new 10-min reading. It needs <code>python3 serve.py</code>. Otherwise, open the <a href="https://www.hko.gov.hk/textonly/v2/forecast/text_readings_e.htm" target="_blank" rel="noopener">HKO Regional Weather page</a> (hko.gov.hk/textonly/v2/forecast/text_readings_e.htm), select all, copy, and paste it here.</div>
+    <textarea id="paste" placeholder="Paste the HKO Regional Weather page text…"></textarea>
+    <div class="btns" style="margin-top:8px"><button class="btn" id="bApply">Apply readings</button><button class="btn" id="bReset">Back to snapshot</button></div>
+    <div id="status"></div>
+  </div>
+</div>
+<div id="err"></div>
+
+<script>
+(() => {
+'use strict';
+
+/* ------------------------------------------------------------------
+   DATA: Hong Kong Observatory, Regional Weather (text-only page)
+   Latest readings recorded at 09:30 HKT, 12 Nov 2026.
+   wind: [station, 10-min mean direction (from), mean km/h, max gust km/h]
+   temp: [station, air temperature °C, relative humidity % | null]
+------------------------------------------------------------------- */
+const SNAPSHOT = {
+  time: '09:30 HKT · 12 Nov 2026',
+  wind: [
+    ['Central Pier','East',16,24],['Chek Lap Kok','Northeast',12,17],['Cheung Chau','East',16,22],
+    ['Cheung Chau Beach','Northeast',21,26],['Green Island','East',30,40],['Hong Kong Sea School','Northeast',24,39],
+    ['Kai Tak','Southeast',17,27],["King's Park",'Northeast',8,22],['Lamma Island','East',15,26],
+    ['Lau Fau Shan','Northeast',12,20],['Ngong Ping','East',19,33],['North Point','East',15,24],
+    ['Peng Chau','East',14,19],['Sai Kung','Northeast',9,16],['Sha Chau','Northeast',9,13],
+    ['Sha Tin','North',10,21],['Shek Kong','East',15,24],['Stanley','N/A',16,30],
+    ['Star Ferry','East',19,29],['Ta Kwu Ling','Southeast',12,25],['Tai Mei Tuk','Northeast',16,23],
+    ['Tai Po Kau','East',12,17],['Tap Mun','Northeast',8,15],["Tate's Cairn",'East',22,29],
+    ['Tseung Kwan O','Northeast',13,28],['Tsing Yi','East',12,23],['Tuen Mun','North',6,16],
+    ['Waglan Island','Northeast',27,36],['Wetland Park','Variable',4,14],['Wong Chuk Hang','Northeast',13,24]
+  ],
+  temp: [
+    ['Chek Lap Kok',24.8,62],['Cheung Chau',25.6,66],['Clear Water Bay',24.4,67],['Happy Valley',25.1,null],
+    ['HK Observatory',23.9,68],['HK Park',23.4,70],['Kai Tak Runway Park',24.4,64],['Kau Sai Chau',24.9,62],
+    ["King's Park",24.2,66],['Kowloon City',25.5,60],['Kwun Tong',24.6,null],['Lau Fau Shan',23.9,71],
+    ['Ngong Ping',21.8,null],['Pak Tam Chung',24.3,71],['Peng Chau',26.1,59],['Sai Kung',24.7,63],
+    ['Sha Tin',24.4,69],['Sham Shui Po',25.4,null],['Shau Kei Wan',24.1,69],['Shek Kong',24.9,66],
+    ['Sheung Shui',23.8,63],['Stanley',23.8,null],['Ta Kwu Ling',24.1,64],['Tai Lung',25.0,66],
+    ['Tai Mei Tuk',23.1,null],['Tai Mo Shan',17.9,null],['Tai Po',24.9,65],["Tate's Cairn",20.3,null],
+    ['The Peak',21.6,null],['Tseung Kwan O',25.6,62],['Tsing Yi',24.1,64],['Tsuen Wan Ho Koon',22.9,71],
+    ['Tsuen Wan Shing Mun Valley',24.2,68],['Tuen Mun',24.1,69],['Waglan Island',24.9,69],
+    ['Wetland Park',24.2,68],['Wong Chuk Hang',25.0,67],['Wong Tai Sin',25.4,null],['Yuen Long Park',26.7,null]
+  ]
+};
+
+/* Approximate station coordinates [lat, lon] (placement for the artwork, not survey-grade). */
+const STATIONS = {
+  'Central Pier':[22.2875,114.1561],'Chek Lap Kok':[22.3094,113.9219],'Cheung Chau':[22.2011,114.0267],
+  'Cheung Chau Beach':[22.2133,114.0292],'Clear Water Bay':[22.2633,114.2997],'Green Island':[22.2853,114.1128],
+  'Happy Valley':[22.2703,114.1836],'HK Observatory':[22.3019,114.1742],'Hong Kong Observatory':[22.3019,114.1742],
+  'HK Park':[22.2783,114.1622],'Hong Kong Park':[22.2783,114.1622],'Hong Kong Sea School':[22.2178,114.2133],
+  'Kai Tak':[22.3097,114.2133],'Kai Tak Runway Park':[22.3047,114.2169],'Kau Sai Chau':[22.3703,114.3125],
+  "King's Park":[22.3119,114.1728],'Kowloon City':[22.3350,114.1847],'Kwun Tong':[22.3186,114.2247],
+  'Lamma Island':[22.2261,114.1086],'Lau Fau Shan':[22.4689,113.9836],'Ngong Ping':[22.2586,113.9128],
+  'North Point':[22.2919,114.2006],'Pak Tam Chung':[22.4028,114.3231],'Peng Chau':[22.2911,114.0433],
+  'Sai Kung':[22.3756,114.2744],'Sha Chau':[22.3458,113.8911],'Sha Tin':[22.4025,114.2100],
+  'Sham Shui Po':[22.3356,114.1369],'Shau Kei Wan':[22.2817,114.2361],'Shek Kong':[22.4361,114.0847],
+  'Sheung Shui':[22.5019,114.1111],'Stanley':[22.2142,114.2189],'Star Ferry':[22.2933,114.1689],
+  'Ta Kwu Ling':[22.5286,114.1567],'Tai Lung':[22.4775,114.1200],'Tai Mei Tuk':[22.4753,114.2375],
+  'Tai Mo Shan':[22.4108,114.1244],'Tai Po':[22.4461,114.1789],'Tai Po Kau':[22.4428,114.1839],
+  'Tap Mun':[22.4714,114.3606],'Tap Mun East':[22.4714,114.3650],"Tate's Cairn":[22.3578,114.2178],
+  'The Peak':[22.2642,114.1550],'Tseung Kwan O':[22.3158,114.2556],'Tsing Yi':[22.3442,114.1100],
+  'Tsuen Wan Ho Koon':[22.3836,114.1078],'Tsuen Wan Shing Mun Valley':[22.3756,114.1267],
+  'Tuen Mun':[22.3858,113.9642],'Waglan Island':[22.1822,114.3033],'Wetland Park':[22.4667,114.0089],
+  'Wong Chuk Hang':[22.2478,114.1736],'Wong Tai Sin':[22.3394,114.2053],'Yuen Long Park':[22.4408,114.0183]
+};
+const norm = s => s.toLowerCase().replace(/[^a-z]/g,'');
+const COORD = {}; for (const k in STATIONS) COORD[norm(k)] = STATIONS[k];
+
+const LON0=113.84, LON1=114.42, LAT0=22.15, LAT1=22.56;
+const KM_X=(LON1-LON0)*111.32*Math.cos(22.355*Math.PI/180), KM_Y=(LAT1-LAT0)*110.57;
+const MAP_ASPECT=KM_X/KM_Y;
+const BEARING={North:0,Northeast:45,East:90,Southeast:135,South:180,Southwest:225,West:270,Northwest:315};
+const COMPASS=['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+
+const PALETTES = {
+  Harbour:['#2347d6','#19d3da','#d04dff','#ffb347'],
+  Ember:['#4b1fb0','#e0284a','#ff7b00','#ffd166'],
+  Glacier:['#2340a8','#38bdf8','#a5f3fc','#f8fafc'],
+  Neon:['#4361ee','#00f5d4','#f15bb5','#fee440']
+};
+const hex = h => [1,3,5].map(i=>parseInt(h.slice(i,i+2),16)/255);
+
+const coarse = matchMedia('(pointer:coarse)').matches;
+const S = { palette:'Harbour', count: coarse?150000:300000, wind:1, turb:1, trail:0.955, bloom:1, bright:1, stations:false, paused:false };
+let DATA = SNAPSHOT, FIELD = null;
+
+/* ---------------- field construction (IDW on a km grid) ---------------- */
+function toKm(c){ return { x:(c[1]-LON0)/(LON1-LON0)*KM_X, y:(c[0]-LAT0)/(LAT1-LAT0)*KM_Y }; }
+function buildField(data){
+  const GW=128, GH=Math.round(128/MAP_ASPECT);
+  const W=[], G=[], T=[], placed=[];
+  let su=0, sv=0, ss=0, ns=0;
+  for (const [name,dir,mean,gust] of data.wind){
+    const c=COORD[norm(name)]; if(!c) continue;
+    const p=toKm(c); const m=typeof mean==='number'?mean:null;
+    let u=null,v=null;
+    if (m!==null && dir in BEARING){ const b=BEARING[dir]*Math.PI/180; u=-Math.sin(b)*m; v=-Math.cos(b)*m; }
+    else if (dir==='Calm'){ u=0; v=0; }
+    if (u!==null){ W.push({x:p.x,y:p.y,u,v}); su+=u; sv+=v; }
+    if (m!==null){ ss+=m; ns++; }
+    if (m && typeof gust==='number') G.push({x:p.x,y:p.y,g:Math.min(Math.max(gust/m-1,0),2)/2});
+    placed.push({name,lat:c[0],lon:c[1],u,v,m});
+  }
+  const temps=[]; let rhS=0, rhN=0;
+  for (const [name,t,rh] of data.temp){
+    const c=COORD[norm(name)]; if(!c||typeof t!=='number') continue;
+    const p=toKm(c); T.push({x:p.x,y:p.y,t}); temps.push(t);
+    if (typeof rh==='number'){ rhS+=rh; rhN++; }
+  }
+  const mu = W.length? su/W.length:0, mv = W.length? sv/W.length:0;
+  const sorted=[...temps].sort((a,b)=>a-b); const med=sorted.length?sorted[sorted.length>>1]:24;
+  const tLo=med-3, tHi=med+3;
+  const f=new Float32Array(GW*GH*4);
+  for (let j=0;j<GH;j++) for (let i=0;i<GW;i++){
+    const x=(i+0.5)/GW*KM_X, y=(j+0.5)/GH*KM_Y;
+    let wu=0.004*mu, wv=0.004*mv, ws=0.004;
+    for (const s of W){ const d2=(x-s.x)**2+(y-s.y)**2; const w=1/Math.pow(d2+4,1.25); wu+=w*s.u; wv+=w*s.v; ws+=w; }
+    let gs=0.002*0.4, gw=0.002;
+    for (const s of G){ const d2=(x-s.x)**2+(y-s.y)**2; const w=1/Math.pow(d2+4,1.25); gs+=w*s.g; gw+=w; }
+    let ts=0.002*med, tw=0.002;
+    for (const s of T){ const d2=(x-s.x)**2+(y-s.y)**2; const w=1/Math.pow(d2+2.25,1.5); ts+=w*s.t; tw+=w; }
+    const k=(j*GW+i)*4;
+    f[k]=wu/ws; f[k+1]=wv/ws; f[k+2]=Math.min(Math.max((ts/tw-tLo)/(tHi-tLo),0),1); f[k+3]=gs/gw;
+  }
+  const fromB=(Math.atan2(-mu,-mv)*180/Math.PI+360)%360;
+  return { GW, GH, f, placed,
+    stats:{ nWind:placed.length, meanSpd:ns? ss/ns:0, from:COMPASS[Math.round(fromB/22.5)%16],
+            avgT: temps.length? temps.reduce((a,b)=>a+b,0)/temps.length:0, rh: rhN? rhS/rhN:70, tLo, tHi, nTemp:temps.length } };
+}
+
+/* ---------------- GL setup ---------------- */
+const canvas=document.getElementById('gl'), overlay=document.getElementById('overlay'), octx=overlay.getContext('2d');
+const gl=canvas.getContext('webgl2',{antialias:false,alpha:false,depth:false,stencil:false,premultipliedAlpha:false,powerPreference:'high-performance'});
+function fail(msg){ const e=document.getElementById('err'); e.style.display='flex'; e.textContent=msg; }
+if(!gl){ fail('This piece needs WebGL2. Try a recent version of Safari, Chrome or Firefox.'); return; }
+
+const NOISE=`
+vec3 mod289(vec3 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec4 mod289(vec4 x){return x-floor(x*(1.0/289.0))*289.0;}
+vec4 permute(vec4 x){return mod289(((x*34.0)+1.0)*x);}
+vec4 taylorInvSqrt(vec4 r){return 1.79284291400159-0.85373472095314*r;}
+float snoise(vec3 v){
+  const vec2 C=vec2(1.0/6.0,1.0/3.0); const vec4 D=vec4(0.0,0.5,1.0,2.0);
+  vec3 i=floor(v+dot(v,C.yyy)); vec3 x0=v-i+dot(i,C.xxx);
+  vec3 g=step(x0.yzx,x0.xyz); vec3 l=1.0-g; vec3 i1=min(g.xyz,l.zxy); vec3 i2=max(g.xyz,l.zxy);
+  vec3 x1=x0-i1+C.xxx; vec3 x2=x0-i2+C.yyy; vec3 x3=x0-D.yyy;
+  i=mod289(i);
+  vec4 p=permute(permute(permute(i.z+vec4(0.0,i1.z,i2.z,1.0))+i.y+vec4(0.0,i1.y,i2.y,1.0))+i.x+vec4(0.0,i1.x,i2.x,1.0));
+  float n_=0.142857142857; vec3 ns=n_*D.wyz-D.xzx;
+  vec4 j=p-49.0*floor(p*ns.z*ns.z); vec4 x_=floor(j*ns.z); vec4 y_=floor(j-7.0*x_);
+  vec4 x=x_*ns.x+ns.yyyy; vec4 y=y_*ns.x+ns.yyyy; vec4 h=1.0-abs(x)-abs(y);
+  vec4 b0=vec4(x.xy,y.xy); vec4 b1=vec4(x.zw,y.zw);
+  vec4 s0=floor(b0)*2.0+1.0; vec4 s1=floor(b1)*2.0+1.0; vec4 sh=-step(h,vec4(0.0));
+  vec4 a0=b0.xzyw+s0.xzyw*sh.xxyy; vec4 a1=b1.xzyw+s1.xzyw*sh.zzww;
+  vec3 p0=vec3(a0.xy,h.x); vec3 p1=vec3(a0.zw,h.y); vec3 p2=vec3(a1.xy,h.z); vec3 p3=vec3(a1.zw,h.w);
+  vec4 nr=taylorInvSqrt(vec4(dot(p0,p0),dot(p1,p1),dot(p2,p2),dot(p3,p3)));
+  p0*=nr.x; p1*=nr.y; p2*=nr.z; p3*=nr.w;
+  vec4 m=max(0.6-vec4(dot(x0,x0),dot(x1,x1),dot(x2,x2),dot(x3,x3)),0.0); m=m*m;
+  return 42.0*dot(m*m,vec4(dot(p0,x0),dot(p1,x1),dot(p2,x2),dot(p3,x3)));
+}
+vec2 curl(vec3 q){
+  const float e=0.02;
+  float a=snoise(q+vec3(0.0,e,0.0))-snoise(q-vec3(0.0,e,0.0));
+  float b=snoise(q+vec3(e,0.0,0.0))-snoise(q-vec3(e,0.0,0.0));
+  return vec2(a,-b)/(2.0*e);
+}`;
+const HASH=`
+uint pcg(uint v){uint s=v*747796405u+2891336453u;uint w=((s>>((s>>28u)+4u))^s)*277803737u;return (w>>22u)^w;}
+float rnd(uint v){return float(pcg(v))*(1.0/4294967296.0);}`;
+
+const UPDATE_VS=`#version 300 es
+precision highp float;
+layout(location=0) in vec4 aState;
+out vec4 vState;
+uniform sampler2D uField; uniform vec4 uXf;
+uniform float uTime,uDt,uAspect,uGain,uTurb,uHum;
+uniform uint uFrame; uniform vec3 uPtr; uniform vec2 uPtrVel;
+${NOISE}
+${HASH}
+void main(){
+  vec2 p=aState.xy; float age=aState.z, life=aState.w;
+  uint id=uint(gl_VertexID);
+  vec2 m=p*uXf.xy+uXf.zw;
+  vec4 f=texture(uField,m);
+  float pulse=0.5+0.5*snoise(vec3(m*4.0,uTime*0.25));
+  vec2 v=f.rg*(1.0+f.a*pulse*1.4);
+  vec2 sp=vec2(p.x*uAspect,p.y)/min(uAspect,1.0);
+  vec2 c=curl(vec3(sp*2.4,uTime*0.045))+0.35*curl(vec3(sp*6.0+11.3,uTime*0.09));
+  float amp=uTurb*uHum*(0.35+f.a*1.2)*(4.0+length(f.rg)*0.45);
+  v+=c*amp;
+  vec2 st=v*uGain*uDt; st.x/=uAspect; p+=st;
+  vec2 d=(p-uPtr.xy)*vec2(uAspect,1.0);
+  p+=uPtrVel*exp(-dot(d,d)/0.006)*uPtr.z*uDt*1.6;
+  age+=uDt;
+  if(p.x<0.0||p.x>1.0||p.y<0.0||p.y>1.0) p=fract(p);
+  if(age>life){
+    uint s=id*9781u+uFrame*6271u;
+    p=vec2(rnd(s),rnd(s+1u)); age=0.0; life=3.0+rnd(s+2u)*9.0;
+  }
+  vState=vec4(p,age,life);
+}`;
+const NULL_FS=`#version 300 es
+precision mediump float; out vec4 o; void main(){o=vec4(0.0);}`;
+
+const RENDER_VS=`#version 300 es
+precision highp float;
+layout(location=0) in vec4 aState;
+uniform sampler2D uField; uniform vec4 uXf;
+uniform vec3 uC0,uC1,uC2,uC3; uniform float uPointSize,uAlpha;
+out vec3 vCol;
+${HASH}
+vec3 pal(float t){
+  t=clamp(t,0.0,1.0)*3.0;
+  if(t<1.0) return mix(uC0,uC1,smoothstep(0.0,1.0,t));
+  if(t<2.0) return mix(uC1,uC2,smoothstep(0.0,1.0,t-1.0));
+  return mix(uC2,uC3,smoothstep(0.0,1.0,t-2.0));
+}
+void main(){
+  vec2 p=aState.xy;
+  vec4 f=texture(uField,p*uXf.xy+uXf.zw);
+  float spd=length(f.rg);
+  float j=rnd(uint(gl_VertexID)*13u+7u);
+  float t=f.b*0.85+(j-0.5)*0.16+clamp(spd/40.0,0.0,1.0)*0.15;
+  float fade=smoothstep(0.0,0.9,aState.z)*(1.0-smoothstep(aState.w-1.4,aState.w,aState.z));
+  vCol=pal(t)*(0.55+spd/26.0)*fade*uAlpha;
+  gl_Position=vec4(p*2.0-1.0,0.0,1.0);
+  gl_PointSize=uPointSize;
+}`;
+const RENDER_FS=`#version 300 es
+precision mediump float; in vec3 vCol; out vec4 o; void main(){o=vec4(vCol,1.0);}`;
+
+const QUAD_VS=`#version 300 es
+out vec2 vUv;
+void main(){vec2 p=vec2(float((gl_VertexID<<1)&2),float(gl_VertexID&2));vUv=p;gl_Position=vec4(p*2.0-1.0,0.0,1.0);}`;
+const FADE_FS=`#version 300 es
+precision highp float; in vec2 vUv; uniform sampler2D uTex; uniform float uDecay,uSub; out vec4 o;
+void main(){vec3 c=texture(uTex,vUv).rgb;o=vec4(max(c*uDecay-uSub,0.0),1.0);}`;
+const DOWN_FS=`#version 300 es
+precision highp float; in vec2 vUv; uniform sampler2D uTex; uniform vec2 uTexel; out vec4 o;
+void main(){vec3 c=texture(uTex,vUv+uTexel*vec2(-1.0,-1.0)).rgb+texture(uTex,vUv+uTexel*vec2(1.0,-1.0)).rgb
+ +texture(uTex,vUv+uTexel*vec2(-1.0,1.0)).rgb+texture(uTex,vUv+uTexel*vec2(1.0,1.0)).rgb;o=vec4(c*0.25,1.0);}`;
+const BLUR_FS=`#version 300 es
+precision highp float; in vec2 vUv; uniform sampler2D uTex; uniform vec2 uDir; out vec4 o;
+void main(){vec3 c=texture(uTex,vUv).rgb*0.2270270270;
+ c+=(texture(uTex,vUv+uDir*1.3846153846).rgb+texture(uTex,vUv-uDir*1.3846153846).rgb)*0.3162162162;
+ c+=(texture(uTex,vUv+uDir*3.2307692308).rgb+texture(uTex,vUv-uDir*3.2307692308).rgb)*0.0702702703;
+ o=vec4(c,1.0);}`;
+const COMP_FS=`#version 300 es
+precision highp float; in vec2 vUv;
+uniform sampler2D uTrail,uB1,uB2; uniform float uBloom,uExposure,uT; uniform vec3 uBg; out vec4 o;
+void main(){
+  vec3 c=texture(uTrail,vUv).rgb;
+  vec3 b=texture(uB1,vUv).rgb*0.55+texture(uB2,vUv).rgb*0.9;
+  vec3 col=1.0-exp(-(c+b*uBloom)*uExposure);
+  vec2 q=vUv-0.5; float vig=1.0-smoothstep(0.25,0.95,length(q*vec2(1.0,1.1)));
+  col=uBg*(0.55+0.45*vig)+col*mix(0.7,1.0,vig);
+  float g=fract(sin(dot(gl_FragCoord.xy+uT*61.0,vec2(12.9898,78.233)))*43758.5453);
+  o=vec4(col+(g-0.5)*0.014,1.0);
+}`;
+
+function compile(type,src){ const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+function program(vs,fs,tf){ const p=gl.createProgram(); gl.attachShader(p,compile(gl.VERTEX_SHADER,vs)); gl.attachShader(p,compile(gl.FRAGMENT_SHADER,fs));
+  if(tf) gl.transformFeedbackVaryings(p,tf,gl.SEPARATE_ATTRIBS);
+  gl.linkProgram(p); if(!gl.getProgramParameter(p,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u={}; const n=gl.getProgramParameter(p,gl.ACTIVE_UNIFORMS);
+  for(let i=0;i<n;i++){ const a=gl.getActiveUniform(p,i); u[a.name]=gl.getUniformLocation(p,a.name); }
+  return {p,u}; }
+
+let P;
+try{
+  P={ update:program(UPDATE_VS,NULL_FS,['vState']), render:program(RENDER_VS,RENDER_FS), fade:program(QUAD_VS,FADE_FS),
+      down:program(QUAD_VS,DOWN_FS), blur:program(QUAD_VS,BLUR_FS), comp:program(QUAD_VS,COMP_FS) };
+}catch(e){ fail('Shader error: '+e.message); console.error(e); return; }
+
+// render-target format: half-float if renderable, else RGBA8
+let FMT={internal:gl.RGBA8,type:gl.UNSIGNED_BYTE,isFloat:false};
+if(gl.getExtension('EXT_color_buffer_float')||gl.getExtension('EXT_color_buffer_half_float')){
+  const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t); gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,4,4,0,gl.RGBA,gl.HALF_FLOAT,null);
+  const fb=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,fb); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);
+  if(gl.checkFramebufferStatus(gl.FRAMEBUFFER)===gl.FRAMEBUFFER_COMPLETE) FMT={internal:gl.RGBA16F,type:gl.HALF_FLOAT,isFloat:true};
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null); gl.deleteFramebuffer(fb); gl.deleteTexture(t);
+}
+function target(w,h){ const t=gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D,0,FMT.internal,w,h,0,gl.RGBA,FMT.type,null);
+  const f=gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER,f); gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);
+  gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT); gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  return {t,f,w,h}; }
+function freeTarget(r){ if(r){ gl.deleteTexture(r.t); gl.deleteFramebuffer(r.f); } }
+
+const emptyVao=gl.createVertexArray();
+const tfo=gl.createTransformFeedback();
+const fieldTex=gl.createTexture();
+
+function uploadField(){
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,fieldTex);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA16F,FIELD.GW,FIELD.GH,0,gl.RGBA,gl.FLOAT,FIELD.f);
+  gl.activeTexture(gl.TEXTURE0);
+}
+function refreshField(){ // same size as the allocated texture, so a sub-upload is enough
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,fieldTex);
+  gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,FIELD.GW,FIELD.GH,gl.RGBA,gl.FLOAT,FIELD.f);
+  gl.activeTexture(gl.TEXTURE0);
+}
+
+/* Crossfade: FIELD.f is a working copy blended from a (old) to b (new) on the CPU,
+   re-uploaded each frame. 50k floats per frame, only while a fade is running. */
+let FADE=null;
+function crossfadeTo(d,secs){
+  const next=buildField(d), from=FIELD;
+  FADE={ a:Float32Array.from(from.f), b:next.f, rhA:from.stats.rh, rhB:next.stats.rh, t:0, dur:secs };
+  DATA=d; FIELD={ GW:next.GW, GH:next.GH, f:Float32Array.from(from.f), placed:next.placed, stats:{...next.stats, rh:from.stats.rh} };
+  updateHud(); drawStations();
+}
+function advanceFade(dt){
+  if(!FADE) return;
+  FADE.t+=dt; const x=Math.min(FADE.t/FADE.dur,1), k=x*x*(3-2*x);
+  const {a,b}=FADE, f=FIELD.f;
+  for(let i=0;i<f.length;i++) f[i]=a[i]+(b[i]-a[i])*k;
+  FIELD.stats.rh=FADE.rhA+(FADE.rhB-FADE.rhA)*k;
+  refreshField();
+  if(x>=1){ FADE=null; updateHud(); }
+}
+
+let bufs=[], vaos=[], cur=0, count=0;
+function makeParticles(n){
+  bufs.forEach(b=>gl.deleteBuffer(b)); vaos.forEach(v=>gl.deleteVertexArray(v));
+  const d=new Float32Array(n*4);
+  for(let i=0;i<n;i++){ const life=3+Math.random()*9; d[i*4]=Math.random(); d[i*4+1]=Math.random(); d[i*4+2]=Math.random()*life; d[i*4+3]=life; }
+  bufs=[0,1].map(()=>{ const b=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,b); gl.bufferData(gl.ARRAY_BUFFER,d,gl.DYNAMIC_COPY); return b; });
+  vaos=bufs.map(b=>{ const v=gl.createVertexArray(); gl.bindVertexArray(v); gl.bindBuffer(gl.ARRAY_BUFFER,b);
+    gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0,4,gl.FLOAT,false,0,0); gl.bindVertexArray(null); return v; });
+  gl.bindBuffer(gl.ARRAY_BUFFER,null);
+  cur=0; count=n;
+}
+
+let W=1,H=1,aspect=1,scale=1,trail=[],ti=0,b1a,b1b,b2a,b2b,xf=[1,1,0,0];
+function fieldXform(a){ const m=MAP_ASPECT; return a>m ? [1,m/a,0,0.5-0.5*m/a] : [a/m,1,0.5-0.5*a/m,0]; }
+function resize(){
+  scale=Math.min(window.devicePixelRatio||1,1.5);
+  const cw=window.innerWidth, ch=window.innerHeight;
+  W=Math.max(1,Math.round(cw*scale)); H=Math.max(1,Math.round(ch*scale));
+  canvas.width=W; canvas.height=H;
+  const od=Math.min(window.devicePixelRatio||1,2); overlay.width=Math.round(cw*od); overlay.height=Math.round(ch*od); octx.setTransform(od,0,0,od,0,0);
+  aspect=W/H; xf=fieldXform(aspect);
+  [...trail,b1a,b1b,b2a,b2b].forEach(freeTarget);
+  trail=[target(W,H),target(W,H)]; ti=0;
+  const w4=Math.max(1,W>>2),h4=Math.max(1,H>>2),w8=Math.max(1,W>>3),h8=Math.max(1,H>>3);
+  b1a=target(w4,h4); b1b=target(w4,h4); b2a=target(w8,h8); b2b=target(w8,h8);
+  drawStations();
+}
+
+/* ---------------- passes ---------------- */
+function quad(prog,dst,setup){
+  gl.bindFramebuffer(gl.FRAMEBUFFER,dst?dst.f:null); gl.viewport(0,0,dst?dst.w:W,dst?dst.h:H);
+  gl.useProgram(prog.p); setup(prog.u); gl.bindVertexArray(emptyVao); gl.drawArrays(gl.TRIANGLES,0,3);
+}
+function tex(unit,t){ gl.activeTexture(gl.TEXTURE0+unit); gl.bindTexture(gl.TEXTURE_2D,t); gl.activeTexture(gl.TEXTURE0); }
+
+const ptr={x:0,y:0,on:0,vx:0,vy:0,lx:0,ly:0,lt:0,sx:0,sy:0,st:0,moved:0};
+let time=0, frame=0, last=performance.now();
+
+function setPaletteUniforms(u){
+  const c=PALETTES[S.palette].map(hex);
+  gl.uniform3fv(u.uC0,c[0]); gl.uniform3fv(u.uC1,c[1]); gl.uniform3fv(u.uC2,c[2]); gl.uniform3fv(u.uC3,c[3]);
+}
+
+function step(dt){
+  time+=dt; frame++;
+  const hum=0.7+(FIELD.stats.rh/100)*0.6;
+  // 1. advect particles (transform feedback)
+  const U=P.update;
+  gl.useProgram(U.p);
+  gl.uniform1i(U.u.uField,1); gl.uniform4fv(U.u.uXf,xf);
+  gl.uniform1f(U.u.uTime,time); gl.uniform1f(U.u.uDt,dt); gl.uniform1f(U.u.uAspect,aspect);
+  gl.uniform1f(U.u.uGain,0.0055*S.wind); gl.uniform1f(U.u.uTurb,S.turb); gl.uniform1f(U.u.uHum,hum);
+  gl.uniform1ui(U.u.uFrame,frame>>>0); gl.uniform3f(U.u.uPtr,ptr.x,ptr.y,ptr.on); gl.uniform2f(U.u.uPtrVel,ptr.vx,ptr.vy);
+  gl.bindVertexArray(vaos[cur]);
+  gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK,tfo); gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER,0,bufs[1-cur]);
+  gl.enable(gl.RASTERIZER_DISCARD); gl.beginTransformFeedback(gl.POINTS); gl.drawArrays(gl.POINTS,0,count);
+  gl.endTransformFeedback(); gl.disable(gl.RASTERIZER_DISCARD);
+  gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER,0,null); gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK,null);
+  gl.bindVertexArray(null);
+  cur=1-cur;
+
+  // 2. trails: fade previous frame, then add particles
+  const src=trail[ti], dst=trail[1-ti];
+  quad(P.fade,dst,u=>{ tex(0,src.t); gl.uniform1i(u.uTex,0); gl.uniform1f(u.uDecay,Math.pow(S.trail,dt*60)); gl.uniform1f(u.uSub,FMT.isFloat?0.0004:0.006); });
+  const R=P.render; gl.useProgram(R.p);
+  gl.uniform1i(R.u.uField,1); gl.uniform4fv(R.u.uXf,xf); setPaletteUniforms(R.u);
+  const density=Math.min(Math.max((W*H)/(count*5),0.25),4);
+  const alpha=0.075*density*Math.pow((1-S.trail)/0.05,0.7)*(FMT.isFloat?1:0.8);
+  gl.uniform1f(R.u.uAlpha,alpha); gl.uniform1f(R.u.uPointSize,1.0);
+  gl.enable(gl.BLEND); gl.blendFunc(gl.ONE,gl.ONE);
+  gl.bindVertexArray(vaos[cur]); gl.drawArrays(gl.POINTS,0,count); gl.bindVertexArray(null);
+  gl.disable(gl.BLEND);
+  ti=1-ti;
+
+  // 3. bloom (two levels of separable blur)
+  const T=trail[ti];
+  quad(P.down,b1a,u=>{ tex(0,T.t); gl.uniform1i(u.uTex,0); gl.uniform2f(u.uTexel,1/W,1/H); });
+  quad(P.blur,b1b,u=>{ tex(0,b1a.t); gl.uniform1i(u.uTex,0); gl.uniform2f(u.uDir,1.4/b1a.w,0); });
+  quad(P.blur,b1a,u=>{ tex(0,b1b.t); gl.uniform1i(u.uTex,0); gl.uniform2f(u.uDir,0,1.4/b1a.h); });
+  quad(P.down,b2a,u=>{ tex(0,b1a.t); gl.uniform1i(u.uTex,0); gl.uniform2f(u.uTexel,0.5/b1a.w,0.5/b1a.h); });
+  quad(P.blur,b2b,u=>{ tex(0,b2a.t); gl.uniform1i(u.uTex,0); gl.uniform2f(u.uDir,1.6/b2a.w,0); });
+  quad(P.blur,b2a,u=>{ tex(0,b2b.t); gl.uniform1i(u.uTex,0); gl.uniform2f(u.uDir,0,1.6/b2a.h); });
+
+  // 4. composite
+  quad(P.comp,null,u=>{
+    tex(0,T.t); tex(2,b1a.t); tex(3,b2a.t);
+    gl.uniform1i(u.uTrail,0); gl.uniform1i(u.uB1,2); gl.uniform1i(u.uB2,3);
+    gl.uniform1f(u.uBloom,S.bloom); gl.uniform1f(u.uExposure,1.25*S.bright); gl.uniform1f(u.uT,time%10);
+    gl.uniform3f(u.uBg,0.014,0.02,0.05);
+  });
+}
+
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt=Math.min(Math.max((now-last)/1000,0.001),1/20); last=now;
+  if(S.paused) return;
+  ptr.vx*=Math.pow(0.02,dt); ptr.vy*=Math.pow(0.02,dt);
+  if(!ptr.on && Math.abs(ptr.vx)+Math.abs(ptr.vy)<0.001){ ptr.vx=0; ptr.vy=0; }
+  advanceFade(dt);
+  step(dt);
+}
+
+/* ---------------- stations overlay ---------------- */
+function drawStations(){
+  const cw=window.innerWidth, ch=window.innerHeight;
+  octx.clearRect(0,0,cw,ch);
+  if(!S.stations||!FIELD) return;
+  octx.font="10px 'JetBrains Mono', monospace"; octx.textBaseline='middle';
+  for(const s of FIELD.placed){
+    const u=(s.lon-LON0)/(LON1-LON0), v=(s.lat-LAT0)/(LAT1-LAT0);
+    const x=(u-xf[2])/xf[0]*cw, y=(1-(v-xf[3])/xf[1])*ch;
+    if(x<-20||x>cw+20||y<-20||y>ch+20) continue;
+    octx.fillStyle='rgba(255,255,255,0.85)'; octx.beginPath(); octx.arc(x,y,2.2,0,Math.PI*2); octx.fill();
+    if(s.u!==null && s.m){ const L=6+s.m*1.1, n=Math.hypot(s.u,s.v)||1, dx=s.u/n*L, dy=-s.v/n*L;
+      octx.strokeStyle='rgba(255,255,255,0.7)'; octx.lineWidth=1; octx.beginPath(); octx.moveTo(x,y); octx.lineTo(x+dx,y+dy); octx.stroke(); }
+    octx.fillStyle='rgba(232,236,245,0.6)';
+    octx.fillText(`${s.name}${s.m!==null?' '+s.m:''}`, x+6, y-8);
+  }
+}
+
+/* ---------------- HUD ---------------- */
+function updateHud(){
+  const st=FIELD.stats;
+  document.getElementById('when').textContent=`HKO readings · ${DATA.time}${DATA.live?' · live':''}`;
+  document.getElementById('stats').textContent=`${st.nWind} wind stations · mean ${st.meanSpd.toFixed(0)} km/h from ${st.from} · ${st.avgT.toFixed(1)}°C · RH ${st.rh.toFixed(0)}%`;
+  const c=PALETTES[S.palette];
+  document.getElementById('lgBar').style.background=`linear-gradient(90deg,${c.join(',')})`;
+  document.getElementById('lgLo').textContent=`${st.tLo.toFixed(1)}°`;
+  document.getElementById('lgHi').textContent=`${st.tHi.toFixed(1)}°`;
+  document.getElementById('source').textContent=`Hong Kong Observatory Regional Weather, ${DATA.time}: ${st.nWind} wind stations (10-min mean direction, speed, gust) and ${st.nTemp} temperature stations. Wind sets the flow, gusts set its pulse, temperature sets colour, humidity adds turbulence.`;
+}
+
+function applyData(d){ FADE=null; DATA=d; FIELD=buildField(d); uploadField(); updateHud(); drawStations(); }
+
+/* ---------------- live HKO data (relayed by serve.py) ---------------- */
+const POLL_MS=120000, FADE_FIRST=6, FADE_NEXT=30;
+const LIVE={ on:location.protocol!=='file:', stamp:null, busy:false, gen:0 };
+const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const stampText=s=>`${s.slice(8,10)}:${s.slice(10,12)} HKT · ${+s.slice(6,8)} ${MON[+s.slice(4,6)-1]} ${s.slice(0,4)}`;
+const num=x=>{ const v=parseFloat(x); return Number.isFinite(v)?v:null; };
+const parseCSV=txt=>txt.trim().split(/\r?\n/).slice(1).map(l=>l.split(',').map(s=>s.trim())).filter(r=>r.length>=3);
+async function feed(k){ const r=await fetch(`hko/${k}`,{cache:'no-store'}); if(!r.ok) throw new Error(`${k}: HTTP ${r.status}`); return parseCSV(await r.text()); }
+function liveStatus(msg){ $('status').textContent=msg; }
+async function pollLive(){
+  if(!LIVE.on||LIVE.busy) return;
+  LIVE.busy=true; const gen=LIVE.gen;
+  try{
+    const [w,t,h]=await Promise.all([feed('wind'),feed('temp'),feed('rh').catch(()=>[])]);
+    if(gen!==LIVE.gen||!LIVE.on) return;            // toggled off or overridden mid-flight
+    if(w.length<5) throw new Error(`only ${w.length} wind rows`);
+    const stamp=w[0][0];
+    if(!/^\d{12}$/.test(stamp)) throw new Error('unexpected timestamp');
+    if(stamp===LIVE.stamp){ liveStatus(`Live: ${stampText(stamp)} is current. Checked ${new Date().toLocaleTimeString()}.`); return; }
+    const rh={}; for(const r of h) rh[norm(r[1])]=num(r[2]);
+    const d={ time:stampText(stamp), live:true,
+      wind:w.map(r=>[r[1],r[2],num(r[3]),num(r[4])]),
+      temp:t.map(r=>[r[1],num(r[2]),rh[norm(r[1])]??null]) };
+    crossfadeTo(d, LIVE.stamp?FADE_NEXT:FADE_FIRST);
+    LIVE.stamp=stamp;
+    liveStatus(`Live: ${d.wind.length} wind + ${d.temp.length} temperature stations at ${d.time}.`);
+  }catch(e){
+    if(gen===LIVE.gen) liveStatus(`Live data unavailable (${e.message}). Run python3 serve.py. Retrying every 2 min.`);
+  }finally{ LIVE.busy=false; }
+}
+function setLive(on){
+  LIVE.on=on; LIVE.gen++; $('bLive').classList.toggle('on',on);
+  if(on){ LIVE.stamp=null; pollLive(); }
+}
+
+/* ---------------- paste parser for the HKO text page ---------------- */
+function parseHKO(text){
+  const lines=text.split(/\r?\n/);
+  const windRe=/^\s*([A-Za-z][A-Za-z' .]*?)\s+(Northeast|Northwest|Southeast|Southwest|North|South|East|West|Variable|Calm|N\/A)(?:\s+(\d+|N\/A))?(?:\s+(\d+|N\/A))?\s*$/;
+  const tempRe=/^\s*([A-Za-z][A-Za-z' .]*?)\s+(-?\d+\.\d)\s+(\d+|N\/A)\b/;
+  const wind=[], temp=[];
+  for(const l of lines){
+    let m=l.match(windRe);
+    if(m && COORD[norm(m[1])]){ const n=x=>x&&x!=='N/A'?parseInt(x,10):null; wind.push([m[1].trim(),m[2],n(m[3]),n(m[4])]); continue; }
+    m=l.match(tempRe);
+    if(m && COORD[norm(m[1])]) temp.push([m[1].trim(),parseFloat(m[2]),m[3]==='N/A'?null:parseInt(m[3],10)]);
+  }
+  const tm=text.match(/recorded at\s+(\d{1,2}:\d{2})\s+Hong Kong Time\s+(\d{1,2}\s+\w+\s+\d{4})/i);
+  const time=tm?`${tm[1]} HKT · ${tm[2]}`:'pasted readings';
+  return {time,wind,temp};
+}
+
+/* ---------------- UI ---------------- */
+const $=id=>document.getElementById(id);
+const panel=$('panel');
+function bindRange(id,key,fmt){ const el=$(id), out=el.parentElement.querySelector('output'); el.value=S[key];
+  const show=()=>{ out.textContent=fmt(S[key]); }; show();
+  el.addEventListener('input',()=>{ S[key]=parseFloat(el.value); show(); }); }
+bindRange('wind','wind',v=>v.toFixed(2)+'×'); bindRange('turb','turb',v=>v.toFixed(2)+'×');
+bindRange('trail','trail',v=>Math.round(1/(1-v))+'f'); bindRange('bloom','bloom',v=>v.toFixed(2)); bindRange('bright','bright',v=>v.toFixed(2));
+$('count').value=String(S.count);
+$('count').addEventListener('change',e=>{ S.count=parseInt(e.target.value,10); makeParticles(S.count); });
+
+const pal=$('palettes');
+function renderChips(){ pal.innerHTML=''; for(const name in PALETTES){ const b=document.createElement('button'); b.className='chip'+(name===S.palette?' on':'');
+  b.innerHTML=`<i style="background:linear-gradient(90deg,${PALETTES[name].join(',')})"></i>${name}`;
+  b.onclick=()=>{ S.palette=name; renderChips(); updateHud(); }; pal.appendChild(b); } }
+renderChips();
+
+$('bStations').onclick=e=>{ S.stations=!S.stations; e.currentTarget.classList.toggle('on',S.stations); drawStations(); };
+$('bPause').onclick=e=>{ S.paused=!S.paused; e.currentTarget.classList.toggle('on',S.paused); e.currentTarget.textContent=S.paused?'Resume':'Pause'; };
+$('bReseed').onclick=()=>{ makeParticles(S.count); trail.forEach(t=>{ gl.bindFramebuffer(gl.FRAMEBUFFER,t.f); gl.clear(gl.COLOR_BUFFER_BIT); }); gl.bindFramebuffer(gl.FRAMEBUFFER,null); };
+$('toggle').onclick=()=>panel.classList.add('open');
+$('close').onclick=()=>panel.classList.remove('open');
+$('bApply').onclick=()=>{
+  const d=parseHKO($('paste').value);
+  if(d.wind.length<5){ $('status').textContent=`Found ${d.wind.length} wind rows. Paste the whole Regional Weather page.`; return; }
+  setLive(false); applyData(d); $('status').textContent=`Applied: ${d.wind.length} wind + ${d.temp.length} temperature stations (${d.time}). Live mode off.`;
+};
+$('bReset').onclick=()=>{ setLive(false); applyData(SNAPSHOT); $('status').textContent='Back to the 12 Nov 2026 snapshot. Live mode off.'; };
+$('bLive').onclick=()=>{
+  if(location.protocol==='file:'){ liveStatus('Live mode needs the local server: python3 serve.py, then open http://localhost:8000'); return; }
+  setLive(!LIVE.on); if(!LIVE.on) liveStatus('Live mode off. Holding the current readings.');
+};
+
+// pointer: drag to stir, tap to toggle the clean view
+function simPos(e){ const r=canvas.getBoundingClientRect(); return [(e.clientX-r.left)/r.width, 1-(e.clientY-r.top)/r.height]; }
+canvas.addEventListener('pointerdown',e=>{ const [x,y]=simPos(e); Object.assign(ptr,{x,y,lx:x,ly:y,lt:performance.now(),sx:e.clientX,sy:e.clientY,st:performance.now(),moved:0,on:1}); canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener('pointermove',e=>{ if(!ptr.on) return; const [x,y]=simPos(e); const now=performance.now(); const dt=Math.max((now-ptr.lt)/1000,0.008);
+  const k=0.35; ptr.vx=ptr.vx*(1-k)+((x-ptr.lx)/dt)*k; ptr.vy=ptr.vy*(1-k)+((y-ptr.ly)/dt)*k;
+  ptr.x=x; ptr.y=y; ptr.lx=x; ptr.ly=y; ptr.lt=now; ptr.moved=Math.max(ptr.moved,Math.hypot(e.clientX-ptr.sx,e.clientY-ptr.sy)); });
+function up(){ if(!ptr.on) return; ptr.on=0;
+  if(ptr.moved<8 && performance.now()-ptr.st<350){ if(panel.classList.contains('open')) panel.classList.remove('open'); else document.body.classList.toggle('clean'); } }
+canvas.addEventListener('pointerup',up); canvas.addEventListener('pointercancel',up);
+
+canvas.addEventListener('webglcontextlost',e=>{ e.preventDefault(); fail('The graphics context was lost. Reload the page to restart.'); });
+window.addEventListener('resize',resize);
+setTimeout(()=>{ $('hint').style.opacity='0'; },7000);
+
+/* ---------------- go ---------------- */
+FIELD=buildField(DATA); uploadField(); updateHud();
+resize(); makeParticles(S.count);
+// warm up so the first frame already has trails
+for(let i=0;i<40;i++) step(1/60);
+requestAnimationFrame(loop);
+$('bLive').classList.toggle('on',LIVE.on);
+if(LIVE.on){ pollLive(); setInterval(pollLive,POLL_MS); }
+else liveStatus('Showing the 12 Nov snapshot. For live data run python3 serve.py and open http://localhost:8000');
+window.__harbour={S,step,get FIELD(){return FIELD;},FMT,LIVE,pollLive,get FADE(){return FADE;}};
+})();
+</script>
+</body>
+</html>
