@@ -82,7 +82,7 @@
     <h3>Data</h3>
     <div class="note" id="source"></div>
     <div class="btns" style="margin-top:8px"><button class="btn on" id="bLive">Live</button></div>
-    <div class="note" style="margin-top:8px">Live mode reads HKO every 2 min and crossfades to each new 10-min reading. It needs <code>python3 serve.py</code>. Otherwise, open the <a href="https://www.hko.gov.hk/textonly/v2/forecast/text_readings_e.htm" target="_blank" rel="noopener">HKO Regional Weather page</a> (hko.gov.hk/textonly/v2/forecast/text_readings_e.htm), select all, copy, and paste it here.</div>
+    <div class="note" style="margin-top:8px">Live mode checks HKO every 2 min and crossfades to each new 10-min reading. Without live data, open the <a href="https://www.hko.gov.hk/textonly/v2/forecast/text_readings_e.htm" target="_blank" rel="noopener">HKO Regional Weather page</a> (hko.gov.hk/textonly/v2/forecast/text_readings_e.htm), select all, copy, and paste it here.</div>
     <textarea id="paste" placeholder="Paste the HKO Regional Weather page text…"></textarea>
     <div class="btns" style="margin-top:8px"><button class="btn" id="bApply">Apply readings</button><button class="btn" id="bReset">Back to snapshot</button></div>
     <div id="status"></div>
@@ -535,7 +535,8 @@ function drawStations(){
 /* ---------------- HUD ---------------- */
 function updateHud(){
   const st=FIELD.stats;
-  document.getElementById('when').textContent=`HKO readings · ${DATA.time}${DATA.live?' · live':''}`;
+  const tag=!DATA.live?'':DATA.age>STALE_MIN?` · ${ageText(DATA.age)}`:' · live';
+  document.getElementById('when').textContent=`HKO readings · ${DATA.time}${tag}`;
   document.getElementById('stats').textContent=`${st.nWind} wind stations · mean ${st.meanSpd.toFixed(0)} km/h from ${st.from} · ${st.avgT.toFixed(1)}°C · RH ${st.rh.toFixed(0)}%`;
   const c=PALETTES[S.palette];
   document.getElementById('lgBar').style.background=`linear-gradient(90deg,${c.join(',')})`;
@@ -548,32 +549,52 @@ function applyData(d){ FADE=null; DATA=d; FIELD=buildField(d); uploadField(); up
 
 /* ---------------- live HKO data (relayed by serve.py) ---------------- */
 const POLL_MS=120000, FADE_FIRST=6, FADE_NEXT=30;
-const LIVE={ on:location.protocol!=='file:', stamp:null, busy:false, gen:0 };
+const LIVE={ on:true, stamp:null, busy:false, gen:0, src:null };
+/* Sources, tried in order until one answers: the local relay (python3 serve.py), then the
+   `data` branch that the "HKO data" GitHub Action refreshes every ~10 min (raw.githubusercontent.com
+   sends CORS headers and caches for up to 5 min). GitHub Pages and file:// end up on the second. */
+const RAW='https://raw.githubusercontent.com/raidianblaster/harbour-wind/data/';
+const SOURCES=[ {name:'local relay', url:k=>`hko/${k}`}, {name:'GitHub data branch', url:k=>`${RAW}${k}.csv?t=${Date.now()/60000|0}`} ];
+const STALE_MIN=60;
 const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const stampText=s=>`${s.slice(8,10)}:${s.slice(10,12)} HKT · ${+s.slice(6,8)} ${MON[+s.slice(4,6)-1]} ${s.slice(0,4)}`;
+const stampAgeMin=s=>(Date.now()-Date.UTC(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6,8),+s.slice(8,10)-8,+s.slice(10,12)))/60000;
+const ageText=m=>m<120?`${Math.round(m)} min old`:m<2880?`${Math.round(m/60)} h old`:`${Math.round(m/1440)} days old`;
 const num=x=>{ const v=parseFloat(x); return Number.isFinite(v)?v:null; };
 const parseCSV=txt=>txt.trim().split(/\r?\n/).slice(1).map(l=>l.split(',').map(s=>s.trim())).filter(r=>r.length>=3);
-async function feed(k){ const r=await fetch(`hko/${k}`,{cache:'no-store'}); if(!r.ok) throw new Error(`${k}: HTTP ${r.status}`); return parseCSV(await r.text()); }
+async function feed(src,k){ const r=await fetch(src.url(k),{cache:'no-store'}); if(!r.ok) throw new Error(`${k}: HTTP ${r.status}`); return parseCSV(await r.text()); }
+async function readAll(){
+  for(const src of LIVE.src?[LIVE.src]:SOURCES){
+    try{
+      const w=await feed(src,'wind');
+      if(w.length<5||!/^\d{12}$/.test(w[0][0])) throw new Error('bad wind feed');
+      const [t,h]=await Promise.all([feed(src,'temp'),feed(src,'rh').catch(()=>[])]);
+      LIVE.src=src; return {w,t,h};
+    }catch(e){ if(LIVE.src){ LIVE.src=null; throw e; } }   // re-probe all sources next time
+  }
+  throw new Error('no source reachable');
+}
 function liveStatus(msg){ $('status').textContent=msg; }
 async function pollLive(){
   if(!LIVE.on||LIVE.busy) return;
   LIVE.busy=true; const gen=LIVE.gen;
   try{
-    const [w,t,h]=await Promise.all([feed('wind'),feed('temp'),feed('rh').catch(()=>[])]);
+    const {w,t,h}=await readAll();
     if(gen!==LIVE.gen||!LIVE.on) return;            // toggled off or overridden mid-flight
-    if(w.length<5) throw new Error(`only ${w.length} wind rows`);
-    const stamp=w[0][0];
-    if(!/^\d{12}$/.test(stamp)) throw new Error('unexpected timestamp');
-    if(stamp===LIVE.stamp){ liveStatus(`Live: ${stampText(stamp)} is current. Checked ${new Date().toLocaleTimeString()}.`); return; }
+    const stamp=w[0][0], age=stampAgeMin(stamp), via=LIVE.src.name;
+    if(stamp===LIVE.stamp){
+      DATA.age=age; updateHud();
+      liveStatus(`Live via ${via}: ${stampText(stamp)} is the latest (${ageText(age)}). Checked ${new Date().toLocaleTimeString()}.`); return;
+    }
     const rh={}; for(const r of h) rh[norm(r[1])]=num(r[2]);
-    const d={ time:stampText(stamp), live:true,
+    const d={ time:stampText(stamp), live:true, age,
       wind:w.map(r=>[r[1],r[2],num(r[3]),num(r[4])]),
       temp:t.map(r=>[r[1],num(r[2]),rh[norm(r[1])]??null]) };
     crossfadeTo(d, LIVE.stamp?FADE_NEXT:FADE_FIRST);
     LIVE.stamp=stamp;
-    liveStatus(`Live: ${d.wind.length} wind + ${d.temp.length} temperature stations at ${d.time}.`);
+    liveStatus(`Live via ${via}: ${d.wind.length} wind + ${d.temp.length} temperature stations at ${d.time} (${ageText(age)}).`);
   }catch(e){
-    if(gen===LIVE.gen) liveStatus(`Live data unavailable (${e.message}). Run python3 serve.py. Retrying every 2 min.`);
+    if(gen===LIVE.gen) liveStatus(`Live data unavailable (${e.message}). Showing ${DATA.time}. Retrying every 2 min.`);
   }finally{ LIVE.busy=false; }
 }
 function setLive(on){
@@ -626,10 +647,7 @@ $('bApply').onclick=()=>{
   setLive(false); applyData(d); $('status').textContent=`Applied: ${d.wind.length} wind + ${d.temp.length} temperature stations (${d.time}). Live mode off.`;
 };
 $('bReset').onclick=()=>{ setLive(false); applyData(SNAPSHOT); $('status').textContent='Back to the 12 Nov 2026 snapshot. Live mode off.'; };
-$('bLive').onclick=()=>{
-  if(location.protocol==='file:'){ liveStatus('Live mode needs the local server: python3 serve.py, then open http://localhost:8000'); return; }
-  setLive(!LIVE.on); if(!LIVE.on) liveStatus('Live mode off. Holding the current readings.');
-};
+$('bLive').onclick=()=>{ setLive(!LIVE.on); if(!LIVE.on) liveStatus('Live mode off. Holding the current readings.'); };
 
 // pointer: drag to stir, tap to toggle the clean view
 function simPos(e){ const r=canvas.getBoundingClientRect(); return [(e.clientX-r.left)/r.width, 1-(e.clientY-r.top)/r.height]; }
@@ -652,8 +670,7 @@ resize(); makeParticles(S.count);
 for(let i=0;i<40;i++) step(1/60);
 requestAnimationFrame(loop);
 $('bLive').classList.toggle('on',LIVE.on);
-if(LIVE.on){ pollLive(); setInterval(pollLive,POLL_MS); }
-else liveStatus('Showing the 12 Nov snapshot. For live data run python3 serve.py and open http://localhost:8000');
+pollLive(); setInterval(pollLive,POLL_MS);
 window.__harbour={S,step,get FIELD(){return FIELD;},FMT,LIVE,pollLive,get FADE(){return FADE;}};
 })();
 </script>

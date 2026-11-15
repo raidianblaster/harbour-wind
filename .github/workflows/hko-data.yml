@@ -1,0 +1,53 @@
+# Fetch the latest HKO regional-weather CSVs and publish them to the `data`
+# branch, so the GitHub Pages build can read them from raw.githubusercontent.com
+# (which sends CORS headers; HKO's CSVs do not).
+#
+# The data branch is a single orphan commit, force-pushed each run, so it never
+# accumulates history. GitHub's scheduler is best-effort: runs are often
+# 5 to 20 min late, and schedules pause after 60 days without repo activity.
+name: HKO data
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hko-data
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Fetch HKO feeds
+        run: |
+          set -euo pipefail
+          mkdir out && cd out
+          B=https://data.weather.gov.hk/weatherAPI/hko_data/regional-weather
+          get() { curl -fsS --retry 3 --retry-delay 5 --max-time 30 -o "$1" "$B/$2"; }
+          get wind.csv latest_10min_wind.csv
+          get temp.csv latest_1min_temperature.csv
+          get rh.csv   latest_1min_humidity.csv || echo 'Date time,Automatic Weather Station,Relative Humidity(percent)' > rh.csv
+          # refuse to publish an error page or an empty feed
+          rows=$(grep -cE '^[0-9]{12},' wind.csv || true)
+          echo "wind rows: $rows, stamp: $(sed -n 2p wind.csv | cut -d, -f1)"
+          test "$rows" -ge 5
+          date -u +%Y-%m-%dT%H:%M:%SZ > fetched_at.txt
+
+      - name: Publish to data branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd out
+          git init -q -b data
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -qm "HKO readings $(sed -n 2p wind.csv | cut -d, -f1)"
+          git push -qf "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" data

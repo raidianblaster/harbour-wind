@@ -12,7 +12,7 @@ For live data, use the bundled relay (a plain static server will not do; see Dat
 python3 serve.py   # then open http://localhost:8000
 ```
 
-Opening `index.html` directly (file://) or in the artifact falls back to the embedded snapshot.
+Opening `index.html` directly (file://) skips the relay and reads the `data` branch; the claude.ai artifact can't fetch at all and stays on the embedded snapshot.
 
 ## Data → visual mapping (the core idea)
 
@@ -35,6 +35,7 @@ Opening `index.html` directly (file://) or in the artifact falls back to the emb
   Columns: datetime (YYYYMMDDHHMN), station, 10-min mean direction (compass / Calm / Variable / N/A), mean speed km/h, max gust km/h.
 - Current weather JSON (temperature, humidity, rainfall): https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=rhrread&lang=en
 - CORS (checked 15 Nov 2026): the regional-weather CSVs (`latest_10min_wind.csv`, `latest_1min_temperature.csv`, `latest_1min_humidity.csv`) send NO `Access-Control-Allow-Origin`, so browsers can't read them directly; the `rhrread` JSON does send `*`. Hence `serve.py`: stdlib server on 127.0.0.1 that relays the three CSVs at `/hko/wind|temp|rh` (60 s cache, serves stale if HKO is down).
+- Public site: https://raidianblaster.github.io/harbour-wind/ (GitHub Pages from `main` root; landing page lives in the separate `raidianblaster.github.io` repo). Pages can't run `serve.py`, so the `HKO data` workflow (`.github/workflows/hko-data.yml`, cron `*/10`) force-pushes the three CSVs as a single orphan commit to the `data` branch; the page reads them from raw.githubusercontent.com (CORS `*`, CDN max-age 300). Source order in `readAll()`: local relay, then data branch. Readings older than `STALE_MIN` (60) show their age instead of "live". Cron runs are best-effort (often 5 to 20 min late) and GitHub pauses schedules after 60 days without repo activity.
 - Live mode: page polls every 2 min, and when the wind CSV timestamp changes it crossfades the field over 30 s (6 s for the first live load, replacing the snapshot). Blend is CPU lerp of the field array + `texSubImage2D` each frame, eased with smoothstep; RH is lerped too. Fade time is sim time (dt capped at 1/20 s), so it pauses with Pause and runs slow on software GL. Pasting readings or "Back to snapshot" switches live off.
 - The artifact version can't fetch (artifact CSP), so the paste-to-refresh parser (`parseHKO`) for the text page stays as the fallback.
 - Station coordinates in `STATIONS` are hand-approximated [lat, lon]. Good enough for art, not survey-grade. Replace with HKO's official station list if precision matters.
