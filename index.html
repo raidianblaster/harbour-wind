@@ -83,7 +83,7 @@
     <h3>Data</h3>
     <div class="note" id="source"></div>
     <div class="btns" style="margin-top:8px"><button class="btn on" id="bLive">Live</button></div>
-    <div class="note" style="margin-top:8px">Live mode checks HKO every 2 min and crossfades to each new 10-min reading. Without live data, open the <a href="https://www.hko.gov.hk/textonly/v2/forecast/text_readings_e.htm" target="_blank" rel="noopener">HKO Regional Weather page</a> (hko.gov.hk/textonly/v2/forecast/text_readings_e.htm), select all, copy, and paste it here.</div>
+    <div class="note" style="margin-top:8px">Live mode checks for new HKO readings every 5 min and crossfades to each one. Without live data, open the <a href="https://www.hko.gov.hk/textonly/v2/forecast/text_readings_e.htm" target="_blank" rel="noopener">HKO Regional Weather page</a> (hko.gov.hk/textonly/v2/forecast/text_readings_e.htm), select all, copy, and paste it here.</div>
     <div class="note" style="margin-top:8px">Coastline © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap contributors</a>.</div>
     <textarea id="paste" placeholder="Paste the HKO Regional Weather page text…"></textarea>
     <div class="btns" style="margin-top:8px"><button class="btn" id="bApply">Apply readings</button><button class="btn" id="bReset">Back to snapshot</button></div>
@@ -566,14 +566,14 @@ function updateHud(){
 function applyData(d){ FADE=null; DATA=d; FIELD=buildField(d); uploadField(); updateHud(); drawStations(); }
 
 /* ---------------- live HKO data (relayed by serve.py) ---------------- */
-const POLL_MS=120000, FADE_FIRST=6, FADE_NEXT=30;
+const POLL_MS=5*60000, FADE_FIRST=6, FADE_NEXT=30;
 const LIVE={ on:true, stamp:null, busy:false, gen:0, src:null };
 /* Sources, tried in order until one answers: the local relay (python3 serve.py), then the
-   `data` branch that the "HKO data" GitHub Action refreshes every ~10 min (raw.githubusercontent.com
+   `data` branch that the "HKO data" GitHub Action refreshes every ~30 min (raw.githubusercontent.com
    sends CORS headers and caches for up to 5 min). GitHub Pages and file:// end up on the second. */
 const RAW='https://raw.githubusercontent.com/raidianblaster/harbour-wind/data/';
 const SOURCES=[ {name:'local relay', url:k=>`hko/${k}`}, {name:'GitHub data branch', url:k=>`${RAW}${k}.csv?t=${Date.now()/60000|0}`} ];
-const STALE_MIN=60;
+const STALE_MIN=90;   // 30-min schedule + GitHub's cron delay + 5-min CDN cache
 const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 const stampText=s=>`${s.slice(8,10)}:${s.slice(10,12)} HKT · ${+s.slice(6,8)} ${MON[+s.slice(4,6)-1]} ${s.slice(0,4)}`;
 const stampAgeMin=s=>(Date.now()-Date.UTC(+s.slice(0,4),+s.slice(4,6)-1,+s.slice(6,8),+s.slice(8,10)-8,+s.slice(10,12)))/60000;
@@ -612,7 +612,7 @@ async function pollLive(){
     LIVE.stamp=stamp;
     liveStatus(`Live via ${via}: ${d.wind.length} wind + ${d.temp.length} temperature stations at ${d.time} (${ageText(age)}).`);
   }catch(e){
-    if(gen===LIVE.gen) liveStatus(`Live data unavailable (${e.message}). Showing ${DATA.time}. Retrying every 2 min.`);
+    if(gen===LIVE.gen) liveStatus(`Live data unavailable (${e.message}). Showing ${DATA.time}. Retrying every ${POLL_MS/60000} min.`);
   }finally{ LIVE.busy=false; }
 }
 function setLive(on){

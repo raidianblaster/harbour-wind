@@ -9,7 +9,9 @@ name: HKO data
 
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    # every 30 min, at :07 and :37 so HKO has published the :00/:30 reading,
+    # and off the top of the hour when GitHub's scheduler is busiest
+    - cron: '7,37 * * * *'
   workflow_dispatch:
 
 permissions:
